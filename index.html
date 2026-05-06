@@ -1,138 +1,250 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>酸素管理アプリ（ME専用）</title>
+
+<style>
+body{
+ font-family:Arial;
+ margin:0;
+ padding:16px;
+ background:#f7f7f7;
+ transition:0.5s;
+}
+
+body.safe{background:linear-gradient(135deg,#64b5f6,#90caf9);}
+body.warning{background:linear-gradient(135deg,#fff176,#ffd54f);}
+body.danger{background:linear-gradient(135deg,#ff4d4d,#ff0000);}
+
+.container{max-width:700px;margin:auto}
+
+.card{
+ background:#fff;
+ border-radius:14px;
+ padding:18px;
+ box-shadow:0 6px 18px rgba(0,0,0,0.08);
+ color:#000;
+}
+
+.result{
+ margin-top:12px;
+ padding:12px;
+ background:#ffffffee;
+ border-radius:10px;
+ font-weight:bold;
+ color:#000;
+}
+
+label{display:block;margin-top:10px;font-weight:bold}
+
+input,select{
+ width:100%;
+ padding:10px;
+ margin-top:4px;
+ border-radius:8px;
+ border:1px solid #ccc;
+}
+
+/* ★ここが追加ポイント */
+#mode{
+ font-size:18px;
+ padding:14px;
+ height:52px;
+}
+
+button{
+ margin-top:12px;
+ width:100%;
+ padding:14px;
+ border:none;
+ border-radius:10px;
+ background:#43a047;
+ color:white;
+ font-size:16px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+<div class="card">
+
+<h2>酸素管理アプリ（ME専用）</h2>
+
+<label>モード</label>
+<select id="mode">
+<option value="" selected disabled>選択してください</option>
+<option value="normal">通常酸素</option>
+<option value="nppv">NPPV</option>
+<option value="vent">呼吸器</option>
+<option value="hfnc">HFNC</option>
+<option value="ecmo">ECMO</option>
+</select>
+
+<label>ボンベ容量</label>
+<select id="cylinder">
+<option value="500">500 L</option>
+<option value="1500">1500 L</option>
+</select>
+
+<label>ボンベ圧 (MPa)</label>
+<input id="pressure" type="number">
+
+<div id="commonFlow" style="display:none;">
+<label id="flowLabel">流量</label>
+<input id="flow" type="number">
+</div>
+
+<div id="ecmoBlock" style="display:none;">
+<label>ECMO流量 (L/min)</label>
+<input id="ecmoFlow" type="number">
+</div>
+
+<div id="fio2Block" style="display:none;">
+<label>FiO2 (%)</label>
+<input id="fio2" type="number">
+</div>
+
+<div id="leakBlock" style="display:none;">
+<label>リーク量 (L/min)</label>
+<input id="leak" type="number">
+</div>
+
+<label>安全係数</label>
+<input id="safe" type="number" value="2" readonly>
+
+<button onclick="calc()">計算</button>
+
+<div class="result" id="result"></div>
+
+</div>
+</div>
+
 <script>
+
 const FULL_PRESSURE = 14.7
 
 const modeSelect = document.getElementById("mode")
 const fio2Block = document.getElementById("fio2Block")
 const leakBlock = document.getElementById("leakBlock")
 const ecmoBlock = document.getElementById("ecmoBlock")
-const commonFlow = document.getElementById("commonFlow")
 
 modeSelect.addEventListener("change",()=>{
+ document.getElementById("commonFlow").style.display = "block"
  let m = modeSelect.value
  const flowLabel = document.getElementById("flowLabel")
- const flowInput = document.getElementById("flow")
 
- // 初期リセット
- commonFlow.style.display = "block"
- fio2Block.style.display = "none"
- leakBlock.style.display = "none"
- ecmoBlock.style.display = "none"
-
- if(m === "normal"){
-  flowLabel.textContent = "酸素流量 (L/min)"
-  flowInput.placeholder = "例: 5"
+ if(m==="normal"){
+  fio2Block.style.display="none"
+  leakBlock.style.display="none"
+  ecmoBlock.style.display="none"
+  flowLabel.textContent="酸素流量 (L/min)"
  }
-
- else if(m === "nppv"){
-  fio2Block.style.display = "block"
-  leakBlock.style.display = "block"
-  flowLabel.textContent = "分時換気量 (MV) (L/min)"
-  flowInput.placeholder = "例: 8"
+ else if(m==="nppv"){
+  fio2Block.style.display="block"
+  leakBlock.style.display="block"
+  ecmoBlock.style.display="none"
+  flowLabel.textContent="分時換気量 (L/min)"
  }
-
- else if(m === "hfnc"){
-  fio2Block.style.display = "block"
-  flowLabel.textContent = "酸素流量 (L/min)"
-  flowInput.placeholder = "例: 40"
+ else if(m==="ecmo"){
+  fio2Block.style.display="block"
+  ecmoBlock.style.display="block"
+  leakBlock.style.display="none"
+  flowLabel.textContent="流量 (L/min)"
  }
-
- else if(m === "ecmo"){
-  commonFlow.style.display = "none"   // ←重要修正
-  fio2Block.style.display = "block"
-  ecmoBlock.style.display = "block"
-  document.getElementById("fio2").placeholder = "例: 100"
- }
-
  else{
-  fio2Block.style.display = "block"
-  flowLabel.textContent = "分時換気量 (MV) (L/min)"
-  flowInput.placeholder = "例: 8"
+  fio2Block.style.display="block"
+  leakBlock.style.display="none"
+  ecmoBlock.style.display="none"
+  flowLabel.textContent="流量 (L/min)"
  }
 })
 
 function calc(){
 
+let result = document.getElementById("result")
+
 let mode = document.getElementById("mode").value
 let pressure = parseFloat(document.getElementById("pressure").value)
 let mv = parseFloat(document.getElementById("flow").value)
 let cyl = parseFloat(document.getElementById("cylinder").value)
-
-// ★FiO2安全化
-let fio2Val = parseFloat(document.getElementById("fio2").value)
-let fio2 = isNaN(fio2Val) ? 0 : fio2Val / 100
-
-let leak = parseFloat(document.getElementById("leak")?.value || 0)
+let leak = parseFloat(document.getElementById("leak").value || 0)
 let safe = parseFloat(document.getElementById("safe").value)
-let ecmoFlow = parseFloat(document.getElementById("ecmoFlow")?.value)
+let ecmoFlow = parseFloat(document.getElementById("ecmoFlow").value)
 
-// 入力チェック
+let fio2Input = parseFloat(document.getElementById("fio2").value)
+let fio2 = isNaN(fio2Input) ? 0.21 : fio2Input / 100
+
 if(!mode){
- return show("モードを選択してください")
+ result.innerHTML="モード選択してください"
+ return
 }
-
 if(isNaN(pressure)){
- return show("ボンベ圧を入力してください")
+ result.innerHTML="圧力入力してください"
+ return
+}
+if(mode!=="ecmo" && isNaN(mv)){
+ result.innerHTML="流量入力してください"
+ return
+}
+if(mode==="ecmo" && isNaN(ecmoFlow)){
+ result.innerHTML="ECMO流量入力してください"
+ return
 }
 
-// ★流量チェック
-if(mode !== "ecmo" && isNaN(mv)){
- return show("流量を入力してください")
-}
-
-// ★FiO2必須チェック
-if(mode !== "normal" && fio2 === 0){
- return show("FiO2を入力してください")
-}
+let ratio = Math.max(0,(fio2-0.21)/0.79)
 
 let oxygenFlow
 
-if(mode === "normal"){
- oxygenFlow = mv
+if(mode==="normal"){
+ oxygenFlow=mv
 }
-else if(mode === "nppv"){
- oxygenFlow = (mv + leak)*((fio2-0.21)/0.79)
+else if(mode==="nppv"){
+ oxygenFlow=(mv+leak)*ratio
 }
-else if(mode === "ecmo"){
- if(isNaN(ecmoFlow)) return show("G-Flowを入力してください")
- oxygenFlow = ecmoFlow*((fio2-0.21)/0.79)
-}
-else{
- oxygenFlow = mv*((fio2-0.21)/0.79)
-}
-
-// 計算エラー防止
-if(!isFinite(oxygenFlow) || oxygenFlow <= 0){
- return show("入力値を確認してください")
-}
-
-// ★マイナス防止
-let usable = Math.max(0, ((pressure - safe)/FULL_PRESSURE)*cyl)
-
-// ★時間マイナス防止
-let timeMin = Math.max(0, usable/oxygenFlow)
-
-let remainingL = (pressure/FULL_PRESSURE)*cyl
-
-// 色判定（少し厳しめ）
-if(timeMin <= 5){
- document.body.className = "danger"
-}
-else if(timeMin <= 15){
- document.body.className = "warning"
+else if(mode==="ecmo"){
+ oxygenFlow=ecmoFlow*ratio
 }
 else{
- document.body.className = "safe"
+ oxygenFlow=mv*ratio
 }
 
-show(
+if(!isFinite(oxygenFlow)||oxygenFlow<=0){
+ result.innerHTML="入力値エラー"
+ return
+}
+
+let usable=Math.max(0,((pressure-safe)/FULL_PRESSURE)*cyl)
+
+let timeMin=usable/oxygenFlow
+let remainingL=(pressure/FULL_PRESSURE)*cyl
+
+document.body.className=""
+
+if(timeMin<=10){
+ document.body.classList.add("danger")
+}
+else if(timeMin<=20){
+ document.body.classList.add("warning")
+}
+else{
+ document.body.classList.add("safe")
+}
+
+let min=Math.floor(timeMin)
+let sec=Math.floor((timeMin-min)*60)
+
+result.innerHTML=
 "酸素消費量: "+oxygenFlow.toFixed(2)+" L/min<br>"+
 "残量: "+remainingL.toFixed(0)+" L<br>"+
-"使用可能時間: "+Math.round(timeMin)+" 分"
-)
+"使用可能時間: "+min+"分 "+sec+"秒"
+
 }
 
-// 表示関数
-function show(msg){
- document.getElementById("result").innerHTML = msg
-}
 </script>
+
+</body>
+</html>
